@@ -1,0 +1,19 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!221 &22100000
+AnimatorOverrideController:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_Name: NPC_NinjaMage
+  m_Controller: {fileID: 9100000, guid: fddd775728dba494293cde340f36a872, type: 2}
+  m_Clips:
+  - m_OriginalClip: {fileID: 7400000, guid: bec2fb0118953f3428f5c600f45b4017, type: 2}
+    m_OverrideClip: {fileID: 7400000, guid: 4f1a642c92840824e85a162c9e986ba5, type: 2}
+  - m_OriginalClip: {fileID: 7400000, guid: 9208797cc6b838e4e937b97cf33668d4, type: 2}
+    m_OverrideClip: {fileID: 7400000, guid: a6e32c5ed78327c4b87792e9b02c1252, type: 2}
+  - m_OriginalClip: {fileID: 7400000, guid: d724ad546fa411c48a6e175b3bb7f984, type: 2}
+    m_OverrideClip: {fileID: 7400000, guid: 24ac03e288d65804bade610c5aeb5dc8, type: 2}
+  - m_OriginalClip: {fileID: 7400000, guid: 80b0e6de7fefedf42aacd4e210c29326, type: 2}
+    m_OverrideClip: {fileID: 7400000, guid: 7c59b288f59ad094e8dee0bac1a606db, type: 2}
