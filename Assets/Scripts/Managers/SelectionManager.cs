@@ -7,10 +7,10 @@ public class SelectionManager : MonoBehaviour
 {
     public static event Action<EnemyBrain> OnEnemySelectedEvent;
     public static event Action OnNoSelectionEvent;
-    
+
     [Header("Config")]
     [SerializeField] private LayerMask enemyMask;
-    
+
     private Camera mainCamera;
 
     private void Awake()
@@ -51,5 +51,16 @@ public class SelectionManager : MonoBehaviour
                 OnNoSelectionEvent?.Invoke();
             }
         }
+    }
+
+    // Public helper methods so other systems (e.g. auto-target) can request selection changes
+    public static void SelectEnemyExternally(EnemyBrain enemy)
+    {
+        OnEnemySelectedEvent?.Invoke(enemy);
+    }
+
+    public static void ClearSelectionExternally()
+    {
+        OnNoSelectionEvent?.Invoke();
     }
 }

@@ -10,11 +10,15 @@ public class RevivePanel : MonoBehaviour
 
     private ReviveQuestion currentQuestion;
     private PlayerHealth playerHealth;
+    private int attemptsLeft;
+    private System.Action onFail;
 
-    public void Show(ReviveQuestion question, PlayerHealth player)
+    public void Show(ReviveQuestion question, PlayerHealth player, int attempts, System.Action onFailCallback)
     {
         currentQuestion = question;
         playerHealth = player;
+        attemptsLeft = Mathf.Max(1, attempts);
+        onFail = onFailCallback;
         questionTMP.text = question.QuestionText;
         answerInput.text = "";
         gameObject.SetActive(true);
@@ -28,15 +32,30 @@ public class RevivePanel : MonoBehaviour
 
     private void OnSubmit()
     {
-        if (answerInput.text.Trim().Equals(currentQuestion.CorrectAnswer, System.StringComparison.OrdinalIgnoreCase))
+        string userAnswer = (answerInput.text ?? string.Empty).Trim();
+        string correct = (currentQuestion?.CorrectAnswer ?? string.Empty).Trim();
+
+        if (string.Equals(userAnswer, correct, System.StringComparison.OrdinalIgnoreCase))
         {
             playerHealth.Revive();
             gameObject.SetActive(false);
+            return;
+        }
+
+        // wrong answer
+        attemptsLeft--;
+        answerInput.text = "";
+
+        if (attemptsLeft <= 0)
+        {
+            // No attempts left -> fail
+            gameObject.SetActive(false);
+            onFail?.Invoke();
         }
         else
         {
-            answerInput.text = "";
-            // Optionally: Hiển thị thông báo sai
+            // Optionally: show remaining attempts
+            // e.g. update a UI label (not implemented)
         }
     }
 }

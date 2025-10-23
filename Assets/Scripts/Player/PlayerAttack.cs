@@ -5,7 +5,7 @@ using Random = UnityEngine.Random;
 
 public class PlayerAttack : MonoBehaviour
 {
-    [Header("Config")] 
+    [Header("Config")]
     [SerializeField] private PlayerStats stats;
     [SerializeField] private Weapon initialWeapon;
     [SerializeField] private Transform[] attackPositions;
@@ -14,8 +14,12 @@ public class PlayerAttack : MonoBehaviour
     [SerializeField] private ParticleSystem slashFX;
     [SerializeField] private float minDistanceMeleeAttack;
 
+    [Header("Auto Targeting")]
+    [SerializeField] private bool autoTargetEnabled = true;
+    [SerializeField] private float autoTargetRange = 5f;
+
     public Weapon CurrentWeapon { get; set; }
-    
+
     private PlayerActions actions;
     private PlayerAnimations playerAnimations;
     private PlayerMovement playerMovement;
@@ -25,7 +29,7 @@ public class PlayerAttack : MonoBehaviour
 
     private Transform currentAttackPosition;
     private float currentAttackRotation;
-    
+
     private void Awake()
     {
         actions = new PlayerActions();
@@ -42,17 +46,29 @@ public class PlayerAttack : MonoBehaviour
 
     private void Update()
     {
+        // auto-select nearest enemy when enabled
+        if (autoTargetEnabled)
+        {
+            AutoSelectNearestEnemy();
+        }
+
         GetFirePosition();
     }
 
     private void Attack()
     {
+        // if no target, try to auto-select one before attacking
+        if (enemyTarget == null && autoTargetEnabled)
+        {
+            AutoSelectNearestEnemy();
+        }
+
         if (enemyTarget == null) return;
         if (attackCoroutine != null)
         {
             StopCoroutine(attackCoroutine);
         }
-        
+
         attackCoroutine = StartCoroutine(IEAttack());
     }
 
@@ -68,7 +84,7 @@ public class PlayerAttack : MonoBehaviour
         {
             MeleeAttack();
         }
-        
+
         playerAnimations.SetAttackAnimation(true);
         yield return new WaitForSeconds(0.5f);
         playerAnimations.SetAttackAnimation(false);
@@ -76,15 +92,15 @@ public class PlayerAttack : MonoBehaviour
 
     private void MagicAttack()
     {
-        Quaternion rotation =  
+        Quaternion rotation =
             Quaternion.Euler(new Vector3(0f, 0f, currentAttackRotation));
-        Projectile projectile = Instantiate(CurrentWeapon.ProjectilePrefab, 
+        Projectile projectile = Instantiate(CurrentWeapon.ProjectilePrefab,
             currentAttackPosition.position, rotation);
         projectile.Direction = Vector3.up;
         projectile.Damage = GetAttackDamage();
         playerMana.UseMana(CurrentWeapon.RequiredMana);
     }
-    
+
     private void MeleeAttack()
     {
         slashFX.transform.position = currentAttackPosition.position;
@@ -102,7 +118,7 @@ public class PlayerAttack : MonoBehaviour
         CurrentWeapon = newWeapon;
         stats.TotalDamage = stats.BaseDamage + CurrentWeapon.Damage;
     }
-    
+
     private float GetAttackDamage()
     {
         float damage = stats.BaseDamage;
@@ -115,7 +131,7 @@ public class PlayerAttack : MonoBehaviour
 
         return damage;
     }
-    
+
     private void GetFirePosition()
     {
         Vector2 moveDirection = playerMovement.MoveDirection;
@@ -130,7 +146,7 @@ public class PlayerAttack : MonoBehaviour
                 currentAttackRotation = -270f;
                 break;
         }
-        
+
         switch (moveDirection.y)
         {
             case > 0f:
@@ -143,7 +159,54 @@ public class PlayerAttack : MonoBehaviour
                 break;
         }
     }
-    
+
+    private void AutoSelectNearestEnemy()
+    {
+        // keep current target if still valid and within range
+        if (enemyTarget != null)
+        {
+            EnemyHealth h = enemyTarget.GetComponent<EnemyHealth>();
+            if (h != null && h.CurrentHealth > 0f &&
+                Vector3.Distance(transform.position, enemyTarget.transform.position) <= autoTargetRange)
+            {
+                return;
+            }
+        }
+
+        // FindObjectsByType is available in newer Unity; fall back to FindObjectsOfType if not.
+#if UNITY_2023_1_OR_NEWER
+        EnemyBrain[] enemies = UnityEngine.Object.FindObjectsByType<EnemyBrain>(UnityEngine.FindObjectsSortMode.None);
+#else
+        EnemyBrain[] enemies = UnityEngine.Object.FindObjectsOfType<EnemyBrain>();
+#endif
+        float bestDist = float.MaxValue;
+        EnemyBrain best = null;
+        foreach (var e in enemies)
+        {
+            if (e == null) continue;
+            EnemyHealth eh = e.GetComponent<EnemyHealth>();
+            if (eh == null || eh.CurrentHealth <= 0f) continue;
+            float d = Vector3.Distance(transform.position, e.transform.position);
+            if (d <= autoTargetRange && d < bestDist)
+            {
+                bestDist = d;
+                best = e;
+            }
+        }
+
+        enemyTarget = best;
+
+        // notify selection manager so selector sprite and other listeners update
+        if (enemyTarget != null)
+        {
+            SelectionManager.SelectEnemyExternally(enemyTarget);
+        }
+        else
+        {
+            SelectionManager.ClearSelectionExternally();
+        }
+    }
+
     private void EnemySelectedCallback(EnemyBrain enemySelected)
     {
         enemyTarget = enemySelected;
@@ -153,7 +216,7 @@ public class PlayerAttack : MonoBehaviour
     {
         enemyTarget = null;
     }
-    
+
     private void OnEnable()
     {
         actions.Enable();
