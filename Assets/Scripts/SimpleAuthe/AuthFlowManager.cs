@@ -40,6 +40,10 @@ public class AuthFlowManager : MonoBehaviour
     private void Start()
     {
         SetupAuthManager();
+        
+        // Ẩn Player lúc start nếu chưa login
+        HidePlayerIfNotLoggedIn();
+        
         ShowLoginPanel();
     }
 
@@ -309,6 +313,34 @@ public class AuthFlowManager : MonoBehaviour
             else
             {
                 Debug.LogWarning("HandleUserLoggedOut: no AuthManager available to save profile.");
+            }
+        }
+    }
+
+    #endregion
+
+    #region Player Management
+
+    /// <summary>
+    /// Ẩn Player nếu chưa có user login
+    /// </summary>
+    private void HidePlayerIfNotLoggedIn()
+    {
+        var authMgr = AuthManager.Instance ?? subscribedAuthManager;
+        
+        // Nếu chưa có user login, ẩn Player
+        if (authMgr == null || authMgr.CurrentUser == null)
+        {
+            var player = playerPrefabOrReference;
+            if (player == null)
+            {
+                player = UnityEngine.Object.FindAnyObjectByType<Player>(FindObjectsInactive.Exclude);
+            }
+
+            if (player != null && player.gameObject.activeSelf)
+            {
+                player.gameObject.SetActive(false);
+                Debug.Log("AuthFlowManager: Hid Player GameObject until login.");
             }
         }
     }
