@@ -7,8 +7,12 @@ public class AuthFlowManager : MonoBehaviour
     public static AuthFlowManager Instance { get; private set; }
 
     [Header("UI")]
-    [Tooltip("Optional: assign the login Canvas GameObject (contains AuthUI). If null the manager will try to find AuthUI in scene)")]
-    public GameObject loginCanvas;
+    [Tooltip("Authentication Panel component")]
+    [SerializeField] private AuthPanel authPanel;
+
+    [Header("Player")]
+    [Tooltip("Assign Player GameObject here. If empty, will try to find automatically.")]
+    [SerializeField] private Player playerPrefabOrReference;
 
     [Header("Scene")]
     [Tooltip("Optional: scene name to load when user logs in. If empty the manager will try to apply profile to Player in current scene.")]
@@ -16,19 +20,37 @@ public class AuthFlowManager : MonoBehaviour
 
     private PlayerProfile pendingProfile;
 
-    // Cached references để tránh FindObjectOfType lặp lại
+    // Cached references
     private AuthManager subscribedAuthManager;
-    private AuthUI cachedAuthUI;
     private Player cachedPlayer;
 
     private void Awake()
     {
-        if (Instance == null) Instance = this;
-        else { Destroy(gameObject); return; }
-        DontDestroyOnLoad(gameObject);
+        if (Instance == null)
+        {
+            Instance = this;
+            DontDestroyOnLoad(gameObject);
+        }
+        else
+        {
+            Destroy(gameObject);
+        }
     }
 
     private void Start()
+    {
+        SetupAuthManager();
+        ShowLoginPanel();
+    }
+
+    private void OnDestroy()
+    {
+        CleanupAuthManager();
+    }
+
+    #region Auth Manager Setup
+
+    private void SetupAuthManager()
     {
         // subscribe to AuthManager events (AuthManager is DefaultExecutionOrder -100 so it should be ready)
         // prefer the singleton instance, fall back to finding any AuthManager in scene
@@ -43,12 +65,9 @@ public class AuthFlowManager : MonoBehaviour
         {
             Debug.LogWarning("AuthFlowManager: AuthManager not found. Auth events will not be handled until an AuthManager appears.");
         }
-
-        // show login UI at start
-        ShowLoginUI(true);
     }
 
-    private void OnDestroy()
+    private void CleanupAuthManager()
     {
         if (subscribedAuthManager != null)
         {
@@ -58,36 +77,91 @@ public class AuthFlowManager : MonoBehaviour
         }
     }
 
-    private void ShowLoginUI(bool show)
+    #endregion
+
+    #region Auth Panel Management
+
+    private void ShowLoginPanel()
     {
-        if (loginCanvas != null)
+        if (authPanel == null)
         {
-            loginCanvas.SetActive(show);
-            return;
+            authPanel = UnityEngine.Object.FindAnyObjectByType<AuthPanel>();
         }
 
-        // cache the AuthUI reference to avoid repeated Find calls
-        if (cachedAuthUI == null)
+        if (authPanel != null)
         {
-            cachedAuthUI = UnityEngine.Object.FindAnyObjectByType<AuthUI>();
+            authPanel.Show(OnRegister, OnLogin);
         }
-
-        if (cachedAuthUI != null)
+        else
         {
-            cachedAuthUI.gameObject.SetActive(show);
-            return;
-        }
-
-        // nothing to show/hide
-        if (show)
-        {
-            Debug.LogWarning("ShowLoginUI: no loginCanvas assigned and no AuthUI found in scene.");
+            Debug.LogWarning("AuthFlowManager: AuthPanel not found in scene.");
         }
     }
 
+    private void HideLoginPanel()
+    {
+        if (authPanel != null)
+        {
+            authPanel.Hide();
+        }
+    }
+
+    #endregion
+
+    #region Auth Panel Callbacks
+
+    private void OnRegister(string username, string password)
+    {
+        var mgr = AuthManager.Instance ?? subscribedAuthManager;
+        if (mgr == null)
+        {
+            if (authPanel != null) authPanel.ShowMessage("AuthManager not available.");
+            return;
+        }
+
+        if (mgr.Register(username, password, out string error))
+        {
+            if (authPanel != null)
+            {
+                authPanel.ShowMessage("Registration successful. Please login.");
+            }
+        }
+        else
+        {
+            if (authPanel != null) authPanel.ShowMessage("Register failed: " + error);
+        }
+    }
+
+    private void OnLogin(string username, string password)
+    {
+        var mgr = AuthManager.Instance ?? subscribedAuthManager;
+        if (mgr == null)
+        {
+            if (authPanel != null) authPanel.ShowMessage("AuthManager not available.");
+            return;
+        }
+
+        if (mgr.Login(username, password, out string error))
+        {
+            if (authPanel != null)
+            {
+                authPanel.ShowMessage("Login successful. Loading game...");
+            }
+            // HandleUserLoggedIn will be called by AuthManager event
+        }
+        else
+        {
+            if (authPanel != null) authPanel.ShowMessage("Login failed: " + error);
+        }
+    }
+
+    #endregion
+
+    #region User Login/Logout Handlers
+
     private void HandleUserLoggedIn(AuthManager.User user)
     {
-        ShowLoginUI(false);
+        HideLoginPanel();
 
         if (user == null)
         {
@@ -95,7 +169,6 @@ public class AuthFlowManager : MonoBehaviour
             return;
         }
 
-        // prefer the live instance, but fall back to the subscribed manager
         var mgr = AuthManager.Instance ?? subscribedAuthManager;
         if (mgr == null)
         {
@@ -111,77 +184,134 @@ public class AuthFlowManager : MonoBehaviour
         }
         else
         {
-            // load target scene and apply profile after it's loaded
             SceneManager.sceneLoaded += OnSceneLoaded;
             SceneManager.LoadScene(mainSceneName);
         }
     }
 
+    private void HandleUserLoggedOut(AuthManager.User user)
+    {
+        if (user != null)
+        {
+            SaveCurrentPlayerProfile(user);
+        }
+
+        ShowLoginPanel();
+        if (authPanel != null)
+        {
+            authPanel.ShowMessage("Logged out successfully.");
+        }
+    }
+
+    #endregion
+
+    #region Scene Management
+
     private void OnSceneLoaded(Scene scene, LoadSceneMode mode)
     {
         SceneManager.sceneLoaded -= OnSceneLoaded;
-        // clear cached player because scene changed
-        cachedPlayer = null;
-        // also clear cached AuthUI because UI may be part of the new scene
-        cachedAuthUI = null;
+        ClearSceneCache();
         ApplyProfileToExistingPlayer();
     }
+
+    private void ClearSceneCache()
+    {
+        // clear cached player because scene changed
+        cachedPlayer = null;
+        // Re-find authPanel in new scene if needed
+        authPanel = UnityEngine.Object.FindAnyObjectByType<AuthPanel>();
+    }
+
+    #endregion
+
+    #region Profile Management
 
     private void ApplyProfileToExistingPlayer()
     {
         if (pendingProfile == null)
         {
-            Debug.LogWarning("No profile loaded to apply to Player.");
+            Debug.LogWarning("AuthFlowManager: No profile loaded to apply to Player.");
             return;
         }
 
-        // try cached player first, otherwise find and cache
+        // Priority 1: Use assigned player from Inspector
+        if (cachedPlayer == null && playerPrefabOrReference != null)
+        {
+            cachedPlayer = playerPrefabOrReference;
+            Debug.Log("AuthFlowManager: Using Player assigned in Inspector.");
+        }
+
+        // Priority 2: Find active Player in scene
         if (cachedPlayer == null)
         {
-            cachedPlayer = UnityEngine.Object.FindAnyObjectByType<Player>();
+            cachedPlayer = UnityEngine.Object.FindAnyObjectByType<Player>(FindObjectsInactive.Exclude);
+            if (cachedPlayer != null)
+            {
+                Debug.Log("AuthFlowManager: Found active Player in scene.");
+            }
+        }
+
+        // Priority 3: Find inactive Player in scene (including disabled)
+        if (cachedPlayer == null)
+        {
+            cachedPlayer = UnityEngine.Object.FindAnyObjectByType<Player>(FindObjectsInactive.Include);
+            if (cachedPlayer != null)
+            {
+                Debug.Log("AuthFlowManager: Found inactive Player in scene.");
+            }
         }
 
         if (cachedPlayer != null)
         {
+            // Enable Player GameObject if disabled
+            if (!cachedPlayer.gameObject.activeSelf)
+            {
+                cachedPlayer.gameObject.SetActive(true);
+                Debug.Log("AuthFlowManager: Enabled Player GameObject after login.");
+            }
+
             cachedPlayer.ApplyProfile(pendingProfile);
             pendingProfile = null;
+            
+            Debug.Log("AuthFlowManager: Applied profile to Player successfully.");
         }
         else
         {
-            Debug.LogWarning("Player object not found in scene. Make sure a Player exists or set mainSceneName to load the gameplay scene.");
+            Debug.LogError("AuthFlowManager: Player object not found in scene! " +
+                          "Please assign Player in AuthFlowManager Inspector or make sure a Player GameObject exists with Player.cs component.");
         }
     }
 
-    private void HandleUserLoggedOut(AuthManager.User user)
+    private void SaveCurrentPlayerProfile(AuthManager.User user)
     {
-        // when logging out, save current player profile (if any) using the user info provided
-        if (user != null)
+        // try cached player first
+        if (cachedPlayer == null)
         {
-            // try cached player first
-            if (cachedPlayer == null)
-            {
-                cachedPlayer = UnityEngine.Object.FindAnyObjectByType<Player>();
-            }
-
-            if (cachedPlayer != null)
-            {
-                var profile = cachedPlayer.ToProfile();
-                // ensure profile id is set to the user's player id
-                profile.Id = user.PlayerId;
-
-                var mgr = AuthManager.Instance ?? subscribedAuthManager;
-                if (mgr != null)
-                {
-                    mgr.SaveProfile(user.PlayerId, profile);
-                }
-                else
-                {
-                    Debug.LogWarning("HandleUserLoggedOut: no AuthManager available to save profile.");
-                }
-            }
+            cachedPlayer = playerPrefabOrReference;
         }
 
-        // show login UI
-        ShowLoginUI(true);
+        if (cachedPlayer == null)
+        {
+            cachedPlayer = UnityEngine.Object.FindAnyObjectByType<Player>(FindObjectsInactive.Include);
+        }
+
+        if (cachedPlayer != null)
+        {
+            var profile = cachedPlayer.ToProfile();
+            // ensure profile id is set to the user's player id
+            profile.Id = user.PlayerId;
+
+            var mgr = AuthManager.Instance ?? subscribedAuthManager;
+            if (mgr != null)
+            {
+                mgr.SaveProfile(user.PlayerId, profile);
+            }
+            else
+            {
+                Debug.LogWarning("HandleUserLoggedOut: no AuthManager available to save profile.");
+            }
+        }
     }
+
+    #endregion
 }
