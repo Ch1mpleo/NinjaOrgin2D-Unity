@@ -1,25 +1,39 @@
-using System;
-using UnityEngine;
+﻿using UnityEngine;
 
 public class PlayerHealth : MonoBehaviour, IDamageable
 {
     [Header("Config")]
     [SerializeField] private PlayerStats stats;
+
     [Header("Revive")]
     [SerializeField] private RevivePanel revivePanel; // assign in inspector if possible
     [SerializeField] private int reviveAttempts = 3;
 
     private PlayerAnimations playerAnimations;
-    public bool PlayerDead { get; private set; } = false; // Thay isDead b?ng PlayerDead
+    public bool PlayerDead { get; private set; } = false;
 
     private PlayerMovement playerMovement;
     private PlayerAttack playerAttack;
+
+    // Cached reference để tránh FindObjectOfType lặp lại
+    private ReviveQuest reviveQuest;
 
     private void Awake()
     {
         playerAnimations = GetComponent<PlayerAnimations>();
         playerMovement = GetComponent<PlayerMovement>();
         playerAttack = GetComponent<PlayerAttack>();
+
+        // Cache ReviveQuest reference
+        reviveQuest = ReviveQuest.Instance;
+        if (reviveQuest == null)
+        {
+            reviveQuest = UnityEngine.Object.FindAnyObjectByType<ReviveQuest>();
+            if (reviveQuest == null)
+            {
+                Debug.LogWarning("PlayerHealth: ReviveQuest không tìm thấy trong scene. Chức năng revive có thể không hoạt động!");
+            }
+        }
     }
 
     private void Update()
@@ -84,26 +98,45 @@ public class PlayerHealth : MonoBehaviour, IDamageable
 
     private void ShowReviveQuestion()
     {
-        // Ensure this source file is saved with UTF-8 encoding in your editor so Vietnamese characters are preserved.
-        ReviveQuestion[] questions = new ReviveQuestion[]
+        // Lấy câu hỏi từ ReviveQuest thay vì hardcode
+        if (reviveQuest == null)
         {
-            new ReviveQuestion { QuestionText = "2 + 2 b?ng m?y?", CorrectAnswer = "4" },
-            new ReviveQuestion { QuestionText = "Th? ?� c?a Vi?t Nam l� g�?", CorrectAnswer = "H� N?i" },
-            new ReviveQuestion { QuestionText = "M�u c?a l� c�y l� g�?", CorrectAnswer = "Xanh" }
-        };
+            // Thử tìm lại nếu chưa có
+            reviveQuest = ReviveQuest.Instance ?? UnityEngine.Object.FindAnyObjectByType<ReviveQuest>();
 
-        int randomIndex = UnityEngine.Random.Range(0, questions.Length);
-        ReviveQuestion question = questions[randomIndex];
+            if (reviveQuest == null)
+            {
+                Debug.LogError("PlayerHealth: Không tìm thấy ReviveQuest trong scene. Không thể hiển thị câu hỏi revive!");
+                HandleReviveFailed();
+                return;
+            }
+        }
+
+        // Lấy câu hỏi ngẫu nhiên từ ReviveQuest
+        ReviveQuestion question = reviveQuest.GetRandomQuestion();
+
+        if (question == null)
+        {
+            Debug.LogError("PlayerHealth: Không thể lấy câu hỏi từ ReviveQuest!");
+            HandleReviveFailed();
+            return;
+        }
 
         // Use assigned revivePanel if available, otherwise try to find one in scene
-        RevivePanel panelToUse = revivePanel ?? UnityEngine.Object.FindAnyObjectByType<RevivePanel>();
+        RevivePanel panelToUse = revivePanel;
+        if (panelToUse == null)
+        {
+            panelToUse = UnityEngine.Object.FindAnyObjectByType<RevivePanel>();
+        }
+
         if (panelToUse != null)
         {
             panelToUse.Show(question, this, reviveAttempts, HandleReviveFailed);
         }
         else
         {
-            Debug.LogWarning("RevivePanel not found in scene. Player will remain dead.");
+            Debug.LogWarning("PlayerHealth: RevivePanel không tìm thấy trong scene. Player sẽ chết.");
+            HandleReviveFailed();
         }
     }
 

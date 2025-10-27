@@ -40,6 +40,15 @@ public class PlayerMana : MonoBehaviour
     
     public void ResetMana()
     {
+        // ensure both the stats and runtime CurrentMana are set
+        stats.Mana = stats.MaxMana;
         CurrentMana = stats.MaxMana;
+    }
+
+    // Allow external code (e.g. ApplyProfile) to set current mana explicitly
+    public void SetCurrentMana(float amount)
+    {
+        stats.Mana = Mathf.Clamp(amount, 0f, stats.MaxMana);
+        CurrentMana = stats.Mana;
     }
 }

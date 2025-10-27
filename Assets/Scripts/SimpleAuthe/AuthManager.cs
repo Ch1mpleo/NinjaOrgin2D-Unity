@@ -17,11 +17,17 @@ public class AuthManager : MonoBehaviour
         public string PasswordHash; // base64
         public string Salt;         // base64
         public string CreatedAt;
+        // link to player's profile (GUID)
+        public string PlayerId;
     }
 
     private List<User> users = new List<User>();
     public User CurrentUser { get; private set; }
     private const string USERS_KEY = "users";
+
+    // Events: subscribe to react when user logs in/out
+    public event Action<User> OnUserLoggedIn;
+    public event Action<User> OnUserLoggedOut;
 
     void Awake()
     {
@@ -62,13 +68,22 @@ public class AuthManager : MonoBehaviour
         }
         var salt = GenerateSalt();
         var hash = HashPassword(password, salt);
+        var playerId = Guid.NewGuid().ToString();
         var u = new User
         {
             Username = username,
             Salt = Convert.ToBase64String(salt),
             PasswordHash = Convert.ToBase64String(hash),
-            CreatedAt = DateTime.UtcNow.ToString("o")
+            CreatedAt = DateTime.UtcNow.ToString("o"),
+            PlayerId = playerId
         };
+
+        // create default profile for the new player
+        var profile = PlayerProfile.CreateDefault();
+        profile.Id = playerId;
+        profile.Username = username;
+        SaveProfile(playerId, profile);
+
         users.Add(u);
         SaveUsers();
         return true;
@@ -92,12 +107,32 @@ public class AuthManager : MonoBehaviour
             return false;
         }
         CurrentUser = user;
+        // notify listeners
+        OnUserLoggedIn?.Invoke(user);
         return true;
     }
 
     public void Logout()
     {
+        if (CurrentUser != null)
+        {
+            // notify listeners before clearing CurrentUser so they can save state if needed
+            OnUserLoggedOut?.Invoke(CurrentUser);
+        }
         CurrentUser = null;
+    }
+
+    // Profile persistence helpers
+    public void SaveProfile(string playerId, PlayerProfile profile)
+    {
+        if (string.IsNullOrEmpty(playerId) || profile == null) return;
+        SaveGame.Save($"player_{playerId}", profile);
+    }
+
+    public PlayerProfile LoadProfile(string playerId)
+    {
+        if (string.IsNullOrEmpty(playerId)) return null;
+        return SaveGame.Load<PlayerProfile>($"player_{playerId}", default(PlayerProfile));
     }
 
     // Utility: generate 16-byte salt

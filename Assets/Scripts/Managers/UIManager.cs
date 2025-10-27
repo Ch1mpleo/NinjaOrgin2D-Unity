@@ -1,5 +1,4 @@
-using System;
-using TMPro;
+﻿using TMPro;
 using UnityEngine;
 using UnityEngine.UI;
 
@@ -20,7 +19,7 @@ public class UIManager : MonoBehaviour
     [SerializeField] private TextMeshProUGUI expTMP;
     [SerializeField] private TextMeshProUGUI coinsTMP;
 
-    [Header("Stats Panel")] 
+    [Header("Stats Panel")]
     [SerializeField] private GameObject statsPanel;
     [SerializeField] private TextMeshProUGUI statLevelTMP;
     [SerializeField] private TextMeshProUGUI statDamageTMP;
@@ -39,12 +38,17 @@ public class UIManager : MonoBehaviour
     [SerializeField] private GameObject playerQuestPanel;
     [SerializeField] private GameObject shopPanel;
     [SerializeField] private GameObject craftingPanel;
-    
+
+    [Header("Revive System")]
+    [SerializeField] private RevivePanel revivePanel;
+    [Tooltip("Số lần thử trả lời câu hỏi revive")]
+    [SerializeField] private int reviveAttempts = 3;
+
     private void Update()
     {
         UpdatePlayerUI();
     }
-    
+
     public void OpenCloseStatsPanel()
     {
         statsPanel.SetActive(!statsPanel.activeSelf);
@@ -73,7 +77,70 @@ public class UIManager : MonoBehaviour
     {
         craftingPanel.SetActive(value);
     }
-    
+
+    /// <summary>
+    /// Hiển thị Revive Panel với câu hỏi ngẫu nhiên
+    /// Được gọi từ PlayerHealth khi người chơi chết
+    /// </summary>
+    public void ShowRevivePanel(PlayerHealth playerHealth)
+    {
+        if (revivePanel == null)
+        {
+            Debug.LogWarning("UIManager: RevivePanel chưa được gán trong Inspector!");
+            return;
+        }
+
+        if (playerHealth == null)
+        {
+            Debug.LogError("UIManager: PlayerHealth không được null!");
+            return;
+        }
+
+        // Lấy câu hỏi từ ReviveQuest singleton
+        ReviveQuest reviveQuest = ReviveQuest.Instance;
+        if (reviveQuest == null)
+        {
+            reviveQuest = UnityEngine.Object.FindAnyObjectByType<ReviveQuest>();
+            if (reviveQuest == null)
+            {
+                Debug.LogError("UIManager: Không tìm thấy ReviveQuest trong scene!");
+                return;
+            }
+        }
+
+        // Lấy câu hỏi ngẫu nhiên từ ReviveQuest
+        ReviveQuestion randomQuestion = reviveQuest.GetRandomQuestion();
+
+        if (randomQuestion == null)
+        {
+            Debug.LogError("UIManager: Không thể lấy câu hỏi từ ReviveQuest!");
+            return;
+        }
+
+        // Hiển thị panel với callback khi thất bại
+        revivePanel.Show(randomQuestion, playerHealth, reviveAttempts, OnReviveFailed);
+    }
+
+    /// <summary>
+    /// Callback khi người chơi thất bại trong việc revive
+    /// </summary>
+    private void OnReviveFailed()
+    {
+        Debug.Log("UIManager: Người chơi đã thất bại trong việc revive. Game Over!");
+        // Có thể thêm logic: hiển thị Game Over screen, restart level, v.v.
+    }
+
+    /// <summary>
+    /// Đóng Revive Panel (có thể gọi từ bên ngoài nếu cần)
+    /// </summary>
+    public void CloseRevivePanel()
+    {
+        if (revivePanel != null)
+        {
+            revivePanel.gameObject.SetActive(false);
+        }
+    }
+
     private void UpdatePlayerUI()
     {
         healthBar.fillAmount = Mathf.Lerp(healthBar.fillAmount,
@@ -82,7 +149,7 @@ public class UIManager : MonoBehaviour
             stats.Mana / stats.MaxMana, 10f * Time.deltaTime);
         expBar.fillAmount = Mathf.Lerp(expBar.fillAmount,
             stats.CurrentExp / stats.NextLevelExp, 10f * Time.deltaTime);
-        
+
         levelTMP.text = $"Level {stats.Level}";
         healthTMP.text = $"{stats.Health} / {stats.MaxHealth}";
         manaTMP.text = $"{stats.Mana} / {stats.MaxMana}";
@@ -126,7 +193,7 @@ public class UIManager : MonoBehaviour
                 break;
         }
     }
-    
+
     private void OnEnable()
     {
         PlayerUpgrade.OnPlayerUpgradeEvent += UpgradeCallback;
